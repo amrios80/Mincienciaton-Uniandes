@@ -1,22 +1,23 @@
 # -*- coding: utf-8 -*-
 """
     Created by: Andres Segura Tinoco
-    Version: 1.2.0
-    Created on: Nov 23, 2020
-    Updated on: Dec 16, 2020
-    Description: Main class of the descriptive-engine solution.
+    Version: 2.1.0
+    Created on: Sep 09, 2020
+    Updated on: Nov 23, 2020
+    Description: Main class of the predictive-engine solution.
 """
 
 # Import Python
 import os
 import logging
 import pandas as pd
-import numpy as np
-import scipy.stats as ss
+import concurrent.futures
+from multiprocessing import cpu_count
 from datetime import datetime
 
 # Import custom libraries
 import util_lib as ul
+import pred_engine as pe
 
 ######################
 ### CORE FUNCTIONS ###
@@ -27,9 +28,27 @@ def create_result_folders(folder_name):
     folder_path = '../result/' + folder_name
     ul.create_folder(folder_path)
 
+# Core function - Group data by period
+def group_data_by_period(data):
+    
+    # Grouping by epidemiological period
+    gr_data = data.groupby(['year', 'period']).agg('sum')
+    gr_data = gr_data.drop(columns=['month', 'week'])
+    
+    for ix, row in gr_data.iterrows():
+        curr_date = min(data[(data['year'] == ix[0]) & (data['period'] == ix[1])]['date'])
+        gr_data.at[ix, 'date'] = pd.to_datetime(curr_date).date()
+    
+    gr_data.reset_index(inplace=True)
+    gr_data = gr_data.reindex(columns=['date', 'year', 'period', 'value'])
+    gr_data = gr_data.set_index('date')    
+    
+    return gr_data
+
 # Core function - Read the CSV dataset and convert it to a dictionary by entity
-def get_data_by_entity(filename, entity_filter, frequency):
+def get_data_by_entity(filename, entity_filter):
     data_list = dict()
+    full_data = pd.DataFrame(columns=['date', 'entity', 'year', 'period', 'value'])
     
     # Validation
     if os.path.exists(filename):
@@ -44,7 +63,7 @@ def get_data_by_entity(filename, entity_filter, frequency):
             divipola_code[entity] = code
         
         # Read data from CSV dataset
-        raw_data = pd.read_csv(filename)
+        raw_data = pd.read_csv(filename, parse_dates=['date'])
         
         # Filter data by entity
         if len(raw_data):
@@ -57,191 +76,113 @@ def get_data_by_entity(filename, entity_filter, frequency):
                 if (len(entity_filter) == 0 or entity in entity_filter) and (entity in divipola_code.keys()):
                     entity_code = str(divipola_code[entity]).zfill(5)
                     
-                    # Filter data by entity
                     entity_data = raw_data[raw_data['entity'] == entity]
-                    entity_data = entity_data.groupby(['entity', 'year']).agg('sum')
-                    entity_data.reset_index(inplace=True)
+                    entity_data = group_data_by_period(entity_data)        
+                    data_list[entity_code] = entity_data
                     
-                    # Grouping data by frequency
-                    if frequency == 'weekly':
-                        temp_data = pd.DataFrame(columns=['entity', 'year', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13'])                   
-                        
-                        # Grouping data by periods
-                        for ix, row_data in entity_data.iterrows():
-                            year = row_data['year']
-                            values = []
-                            periods = []
-                            
-                            for week in range(1, 54):
-                                value = row_data[str(week)]
-                                values.append(value)
-                                
-                                if (len(values) == 4 and week != 52) or (len(values) == 5 and week == 53):
-                                    total = sum(values)
-                                    periods.append(total)
-                                    values = []
-                            
-                            # Save data row
-                            temp_data.loc[len(temp_data)] = [entity, year] + periods
-                    
-                    elif frequency == 'periodically':
-                        temp_data = entity_data.copy()
-                    
-                    # Save data
-                    data_list[entity_code] = temp_data
-                    print((entity, entity_code), '->', len(temp_data))
+                    # Keep entity data
+                    temp_data = entity_data.copy()
+                    temp_data.reset_index(inplace=True)
+                    temp_data['entity'] = entity_code
+                    temp_data = temp_data.reindex(columns=full_data.columns)
+                    full_data = full_data.append(temp_data)
+                    print((entity, entity_code), '->', len(temp_data), '=', len(full_data))
                 else:
                     print(' = Entity without permission to be processed: ' + entity)
     
-    return data_list
+    # Return dict of entity, data pairs
+    return data_list, full_data
 
-# Core function - Get population by entity and year
-def get_population_by_entity():
-    pop_data = {}
-    
-    raw_data = pd.read_csv('config/population.csv')
-    
-    if len(raw_data):
-        for ix, row in raw_data.iterrows():
-            code = str(row['divipola'])
-            
-            # Apply data quality to code
-            if len(code) == 1:
-                code = '0' + code + '000'
-            elif len(code) == 2:
-                code = code + '000'
-            elif len(code) == 4:
-                code = '0' + code
-                
-            # Get population data
-            for year in range(2010, 2021):
-                year = str(year)
-                pop_value = row[year]
-            
-                # Save key, population pair
-                key = code + '_' + year
-                pop_data[key] = pop_value
-    
-    return pop_data
+# Core function - Mask to the predictive engine
+def create_models(args):
+    entity, data, curr_analysis, perc_test, mape_threshold, ts_tolerance, n_forecast, ci_alpha, partial_end_date, full_init_date = args
+    print(' = Entity: ' + entity + ' - ' + str(datetime.now()))
+    return pe.create_models(entity, data, curr_analysis, perc_test, mape_threshold, ts_tolerance, n_forecast, ci_alpha, partial_end_date, full_init_date)
 
-# Core function - Calculate descriptive stats by entity and period
-def calc_desc_stats(data_list, pop_data, rate_enable, max_year, skip_years):
-    gr_data = pd.DataFrame(columns=['entity', 'year', 'period', 'total'])
-    stats_data = pd.DataFrame(columns=['entity', 'period', 'total', 'mean', 'stdev', 'min', 'p25', 'p50', 'p75', 'max', 'no_data', 'pv_period', 'pv_value', 'pv_min_lim', 'pv_max_lim'])
+# Core function - Create SARIMA model in Parallel
+def parallel_create_models(data_list, curr_analysis, n_process, kwargs):
+    best_models = dict()
+    model_data = pd.DataFrame(columns=['date', 'entity', 'forecast', 'ci_inf', 'ci_sup'])
     
-    # Loop through year, weeks
+    # Read local event variables
+    perc_test = kwargs['perc_test']
+    mape_threshold = kwargs['mape_threshold']
+    ts_tolerance = kwargs['ts_tolerance']
+    n_forecast = kwargs['n_forecast']
+    ci_alpha = kwargs['ci_alpha']
+    partial_end_date = kwargs['partial_end_date']
+    full_init_date = kwargs['full_init_date']
+    
+    # Create list of params for threads
+    params = []
     for entity, data in data_list.items():
-        n_rows = len(data)
-        temp_df = pd.DataFrame(columns=['year', 'period', 'value'])
-        
-        # Grouping data by periods
-        for ix in range(n_rows):
-            row_data = data.iloc[ix]
-            year = row_data['year']
-            key = entity + '_' + str(year)
-            entity_pop = pop_data[key]
-            
-            for period in range(1, 14):
-                total = row_data[str(period)]
-
-                # Change totals per rates
-                if rate_enable:
-                    div = 100000
-                    rate = round(total / entity_pop * div, 4)
-                    curr_value = rate
-                else:
-                    curr_value = total
-                
-                # Save data in memory
-                gr_data.loc[len(gr_data)] = [entity, year, period, curr_value]
-                if not year in skip_years:
-                    temp_df.loc[len(temp_df)] = [year, period, curr_value]
-        
-        # Calculate variation coefficient
-        all_values = list(temp_df[temp_df['year'] < max_year]['value'])
-        var_coef = round(100.0 * ss.variation(all_values ), 4)
-        
-        # Calculate stats
-        for period in range(1, 14):
-            
-            # Calculate percentage variation by years
-            perc_var_list = []
-            for year in range(max_year, max_year - 5, -1):
-                n1_values = list(temp_df[(temp_df['period'] == period) & (temp_df['year'] == year)]['value'])
-                n2_values = list(temp_df[(temp_df['period'] == period) & (temp_df['year'] == (year - 1))]['value'])
-                perc_var = 0
-                
-                if len(n1_values) and len(n2_values):
-                    n1_value = n1_values[0]
-                    n2_value = n2_values[0]
-                    if n1_value > 0 and n2_value > 0:
-                        perc_var = (n1_value - n2_value) / n2_value
-                
-                perc_var_list.append(perc_var)
-                
-            # Percentage variations local variables
-            pv_period = str(max_year) + '-' + str(max_year - 1)
-            pv_value = 0
-            pv_min_lim = 0
-            pv_max_lim = 0
-            if len(perc_var_list) == 5:
-                pv_value = round(perc_var_list[0], 4)
-                pv_min_lim = round(min(perc_var_list[1:]), 4)
-                pv_max_lim = round(max(perc_var_list[1:]), 4)
-            
-            # Filter data by period
-            values = temp_df[(temp_df['period'] == period) & (temp_df['year'] < max_year)]['value']
-            values = [x for x in values if x > 0]
-            
-            # Entity-period vars
-            total = 0
-            mean = 0
-            stdev = 0
-            min_value = 0
-            max_value = 0
-            p25 = 0
-            p50 = 0
-            p75 = 0
-            
-            # Not taking into account current year
-            no_data = n_rows - len(values) - 1
-            
-            if len(values) > 0:
-                values.sort()
-                
-                # Calc stats
-                total = round(sum(values), 4)
-                mean = round(np.mean(values), 4)
-                stdev = round(np.std(values), 4)
-                min_value = round(min(values), 4)
-                max_value = round(max(values), 4)
-                p25 = round(np.percentile(values, 25), 4)
-                p50 = round(np.percentile(values, 50), 4)
-                p75 = round(np.percentile(values, 75), 4)
-            
-            # Save row item
-            row_item = {'entity': entity, 'period': period, 'total': total, 'mean': mean, 'stdev': stdev, 'min': min_value, 
-                        'p25': p25, 'p50':p50, 'p75': p75, 'max': max_value, 'no_data': no_data, 'var_coef': var_coef,
-                        'pv_period': pv_period, 'pv_value': pv_value, 'pv_min_lim': pv_min_lim, 'pv_max_lim': pv_max_lim}
-            stats_data = stats_data.append(row_item, ignore_index=True)
+        params.append([entity, data, curr_analysis, perc_test, mape_threshold, ts_tolerance, n_forecast, ci_alpha, partial_end_date, full_init_date])
     
-    # Return result datasets
-    return gr_data, stats_data
+    # Start compute cycle
+    try:
+        result_data = []
+        if n_process > 1:
+            logging.info(' - Start parallel cycle')
+            if __name__ == '__main__':
+                with concurrent.futures.ThreadPoolExecutor(max_workers=n_process) as executor:
+                    result_data = executor.map(create_models, params)
+            logging.info(' - End parallel cycle')
+        else:
+            logging.info(' - Start sequential cycle')
+            result_data = [create_models(param) for param in params]
+            logging.info(' - End sequential cycle')
+        
+        # Save results in save-mode
+        for entity, best_params, pred_df in result_data:
+            best_models[entity] = best_params
+            model_data = model_data.append(pred_df)
+        
+    except Exception as e:
+        logging.error(' - Create models error: ' + str(e))
+        
+    # Return results
+    return best_models, model_data
 
-# Core function - Save to CSV file the result stats by entity
-def save_results(curr_event, df, exec_date, file_name):
+# Core function - Save to CSV file the hyperparameters of selected models 
+def save_results(curr_event, curr_analysis, best_models, full_data, exec_date):
     exec_col = 'exec_date'
     
-    # Save model data results
-    if df is not None and len(df):
+    # Save best models
+    best_models = {k: v for k, v in best_models.items() if v is not None}
+    if len(best_models):
+        df = pd.DataFrame.from_dict(best_models, orient='index')
         
-        # Post processing of the data
-        df.reset_index(inplace=True)
+        # Populate final dataframe
+        for ix, row in df.iterrows():
+            order = row['order']
+            seasonal_order = row['seasonal_order']
+            df.at[ix, 'p'] = order[0]
+            df.at[ix, 'd'] = order[1]
+            df.at[ix, 'q'] = order[2]
+            df.at[ix, 'Sp'] = seasonal_order[0]
+            df.at[ix, 'Sd'] = seasonal_order[1]
+            df.at[ix, 'Sq'] = seasonal_order[2]
+            df.at[ix, 'freq'] = seasonal_order[3]
+        
+        # Remove unused columns
+        df.drop("order", axis=1, inplace=True)
+        df.drop("seasonal_order", axis=1, inplace=True)
         df.insert(0, exec_col, str(exec_date))
         
         # Persist data
-        filename = '../result/' + curr_event + '/' + file_name + '.csv'
-        ul.save_df_to_csv_file(filename, df, False)
+        filename = '../result/' + curr_event + '/model_params_' + curr_analysis + '.csv'
+        ul.save_df_to_csv_file(filename, df)
+    
+    # Save model data results
+    if full_data is not None and len(full_data):
+        
+        # Post processing of the data
+        full_data.reset_index(inplace=True)
+        full_data.insert(0, exec_col, str(exec_date))
+        
+        # Persist data
+        filename = '../result/' + curr_event + '/result_data_' + curr_analysis + '.csv'
+        ul.save_df_to_csv_file(filename, full_data, False)
 
 #####################
 ### START PROGRAM ###
@@ -258,8 +199,9 @@ if __name__ == "__main__":
     setup_params = ul.get_dict_from_json(config_path)
     event_list = setup_params['event_list']
     entity_filter = setup_params['entity_filter']
+    n_process = max(min(int(setup_params['n_process']), cpu_count() - 1), 1)
     
-    # 2. Loop through entities
+    # 2. Loop through entities 
     for curr_event in event_list:
         event_name = curr_event['name'].lower()
         
@@ -275,27 +217,29 @@ if __name__ == "__main__":
             # 4. Get list of datasets by entities
             logging.info(' = Read data by entity - ' + str(datetime.now()))
             filename = '../data/' + event_name + '_dataset.csv'
-            data_list = get_data_by_entity(filename, entity_filter, curr_event['frequency'])
-            
-            # 5. Get population by entity and year
-            pop_data = get_population_by_entity()
-            
-            # 6. Calculate descriptive stats
-            logging.info(' = Calculate descriptive stats - ' + str(datetime.now()))
-            exec_date = datetime.now()
-            rate_enable = curr_event['rate_enable']
-            skip_years = curr_event['skip_years']
-            max_year = 2020
-            gr_data, stats_data = calc_desc_stats(data_list, pop_data, rate_enable, max_year, skip_years)
-            
-            # 7. Save grouped data by entity
-            logging.info(' = Save grouped data by entity - ' + str(datetime.now()))
-            save_results(event_name, gr_data, exec_date, 'raw_data')
-            
-            # 8. Save stats results by entity
-            logging.info(' = Save stats results by entity - ' + str(datetime.now()))
-            save_results(event_name, stats_data, exec_date, 'result_data')
+            data_list, base_data = get_data_by_entity(filename, entity_filter)
     
+            # Get initial execute date
+            exec_date = datetime.now()
+            analysis_list = curr_event['analysis_list']
+            
+            # 5. Loop through entities
+            for curr_analysis in analysis_list:
+                curr_analysis = curr_analysis.lower()
+                logging.info(' = Analysis: ' + curr_analysis)
+                
+                # 6. Create best model
+                logging.info(' = Create best models >> ' + curr_analysis + ' - '+ str(datetime.now()))
+                best_models, model_data = parallel_create_models(data_list, curr_analysis, n_process, curr_event)
+                
+                # 7. Save hyperparameters of selected models
+                logging.info(' = Save selected models results - ' + str(datetime.now()))
+                full_data = ul.merge_data(df1=base_data, df2=model_data, index=['date', 'entity', 'year', 'period'])
+                save_results(event_name, curr_analysis, best_models, full_data, exec_date)
+        else:
+            logging.info(' = Event: ' + event_name + ' will not be processed.')
+            print(' = Event', event_name, 'will not be processed.')
+            
     logging.info(">> END PROGRAM: " + str(datetime.now()))
     logging.shutdown()
 #####################

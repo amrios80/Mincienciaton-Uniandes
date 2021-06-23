@@ -1,0 +1,4 @@
+driver: '{SQL Server}'
+server: .\SQLExpress01
+database: AC_C19_DATA
+trusted_connection: 'yes'

@@ -1,47 +1,78 @@
 {
   "event_list": [
     {
+      "analysis_list": [ "PARTIAL", "FULL" ],
+      "ci_alpha": 0.9,
       "enabled": true,
-      "frequency": "weekly",
+      "full_init_date": "2017-01-01",
+      "mape_threshold": 4.0,
+      "n_forecast": 13,
       "name": "TUBERCULOSIS",
-      "rate_enable": true,
-      "skip_years": []
+      "partial_end_date": "2019-12-27",
+      "perc_test": 0.20,
+      "ts_tolerance": 4.0
     },
     {
+      "analysis_list": [ "PARTIAL" ],
+      "ci_alpha": 0.9,
       "enabled": true,
-      "frequency": "weekly",
+      "full_init_date": "2017-01-01",
+      "mape_threshold": 4.0,
+      "n_forecast": 13,
       "name": "INFANT_MORTALITY",
-      "rate_enable": false,
-      "skip_years": []
+      "partial_end_date": "2019-12-27",
+      "perc_test": 0.20,
+      "ts_tolerance": 4.0
     },
     {
+      "analysis_list": [ "PARTIAL", "FULL" ],
+      "ci_alpha": 0.9,
       "enabled": true,
-      "frequency": "weekly",
+      "full_init_date": "2017-01-01",
+      "mape_threshold": 4.0,
+      "n_forecast": 13,
       "name": "SUICIDE_ATTEMPT",
-      "rate_enable": true,
-      "skip_years": []
+      "partial_end_date": "2019-12-27",
+      "perc_test": 0.20,
+      "ts_tolerance": 4.0
     },
     {
+      "analysis_list": [ "PARTIAL", "FULL" ],
+      "ci_alpha": 0.9,
       "enabled": true,
-      "frequency": "weekly",
+      "full_init_date": "2017-01-01",
+      "mape_threshold": 5.0,
+      "n_forecast": 13,
       "name": "DIABETES_MELLITUS",
-      "rate_enable": true,
-      "skip_years": []
+      "partial_end_date": "2019-12-27",
+      "perc_test": 0.20,
+      "ts_tolerance": 4.0
     },
     {
+      "analysis_list": [ "PARTIAL", "FULL" ],
+      "ci_alpha": 0.9,
       "enabled": true,
-      "frequency": "periodically",
+      "full_init_date": "2017-01-01",
+      "mape_threshold": 4.0,
+      "n_forecast": 13,
       "name": "EDA",
-      "rate_enable": true,
-      "skip_years": []
+      "partial_end_date": "2019-12-27",
+      "perc_test": 0.20,
+      "ts_tolerance": 4.0
     },
     {
+      "analysis_list": [ "PARTIAL" ],
+      "ci_alpha": 0.9,
       "enabled": true,
-      "frequency": "weekly",
+      "full_init_date": "2017-01-01",
+      "mape_threshold": 5.0,
+      "n_forecast": 13,
       "name": "EXCESS_MORTALITY",
-      "rate_enable": false,
-      "skip_years": [2010, 2013, 2018]
+      "partial_end_date": "2019-12-27",
+      "perc_test": 0.20,
+      "ts_tolerance": 4.0
     }
   ],
-  "entity_filter": []
+  "entity_filter": [],
+  "n_process": 1
 }

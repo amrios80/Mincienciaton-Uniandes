@@ -1,4 +1,4 @@
-# Título de la Solución: Proyecto Predictivo Covid-Uniandes
+# Título de la Solución: Proyecto Descriptivo Covid-Uniandes
 Desarrollo y evaluación de modelos matemáticos y epidemiológicos que apoyen la toma de decisiones en respuesta a la emergencia Covid-19 en Colombia. El proyecto se abordó desde la perspectiva de la ciencia de datos, utilizando técnicas de Data Analytics y Machine Learning.
 
 El proyecto fue separado en 2 grandes módulos, el de Análisis Descriptivo y el de Análisis Predictivo o de Pronósticos.
@@ -13,9 +13,9 @@ El proyecto fue separado en 2 grandes módulos, el de Análisis Descriptivo y el
 * [Autores](#autores)
 
 ## Descripción de la solución
-Repositorio de la solución que calcula el **Análisis Predictivo o de Pronósticos** de los datos fuente para los 6 eventos/enfermedades seleccionadas.
+Repositorio de la solución que calcula el **Análisis Descriptivo** de los datos fuente para los 6 eventos/enfermedades seleccionadas.
 
-Se calcularon los pronósticos con y sin COVID-19 para los siguientes eventos:
+Se calcularon las estadísticas descriptivas para los siguientes eventos:
 - Tuberculosis (TB)
 - Mortalidad Infantil (IM)
 - Intento de Suicidio (SA)
@@ -33,33 +33,22 @@ La solución puede ser ejecutada tanto en un sistema operativo Linux como en uno
 Las librerías de Python necesarias para ejecutar la solución son:
 
 ```python
-import concurrent.futures
-import json
-import logging
-import numpy as np
 import os
-import pandas as pd
-import pred_engine as pe
-import scipy.stats as ss
-import statsmodels.api as sm
-import timeit
-import util_lib as ul
+import json
 import yaml
+import logging
+import pandas as pd
+import numpy as np
+import scipy.stats as ss
+import util_lib as ul
 from datetime import datetime
-from joblib import Parallel
-from joblib import delayed
-from math import ceil
 from math import sqrt, log
-from multiprocessing import cpu_count
 from scipy import stats
 from sklearn.metrics import mean_squared_error
-from warnings import filterwarnings
 ```
 
 ### Requerimientos Hardware
-Es una solución pesada que tiene altos requerimientos de hardware para poder generar los resultados en un tiempo aceptable.
-
-Las pruebas se realizaron en un equipo EC2 c6g.2xlarge de AWS, y generaba los resultados para cada evento en aproximadamente 150 minutos (2.5 horas).
+Es una solución ligera que no tiene mayores requisitos de hardware. Al ser ejecutada en un equipo con una CPU Intel Core i7 (o mejor) y 8 GB de RAM, generará los resultados en 1 o 2 minutos como máximo.
 
 ### Requerimientos Software
 El proyecto fue realizado en Windows con la versión de <a href="https://www.anaconda.com/products/individual" target="_blank" >Anaconda</a>.
@@ -98,23 +87,17 @@ Las tareas a ser realizadas por la solución son configuradas a partir de un arc
 {
   "event_list": [
     {
-      "analysis_list": [ "PARTIAL", "FULL" ],
-      "ci_alpha": 0.9,
       "enabled": true,
-      "full_init_date": "2017-01-01",
-      "mape_threshold": 4.0,
-      "n_forecast": 13,
+      "frequency": "weekly",
       "name": "TUBERCULOSIS",
-      "partial_end_date": "2019-12-27",
-      "perc_test": 0.20,
-      "ts_tolerance": 4.0
+      "rate_enable": true,
+      "skip_years": []
     },
     {
       ...
     }
   ],
-  "entity_filter": ["COLOMBIA", "BOGOTA DC", "ANTIOQUIA"],
-  "n_process": 1
+  "entity_filter": []
 }
 ```
 
@@ -132,5 +115,5 @@ No aplica
 
 ## Autores
 - Creado por <a href="https://github.com/ansegura7">Andrés Segura Tinoco</a>
-- Creado el 25 de julio, 2020
-- Última actualización el 10 de diciembre, 2020
+- Creado el 15 de noviembre, 2020
+- Última actualización el 16 de diciembre, 2020
